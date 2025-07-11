@@ -6,7 +6,7 @@ import axios from 'axios';
 dotenv.config();
 
 const app = express();
-app.use(cors()); // penting biar bisa diakses dari netlify
+app.use(cors());
 app.use(express.json());
 
 app.post('/chat', async (req, res) => {
@@ -19,7 +19,7 @@ app.post('/chat', async (req, res) => {
         model: 'meta-llama/Llama-3-8B-Instruct',
         prompt: `Kamu adalah ahli herbal. ${prompt}`,
         max_tokens: 200,
-        temperature: 0.7,
+        temperature: 0.7
       },
       {
         headers: {
@@ -29,12 +29,16 @@ app.post('/chat', async (req, res) => {
       }
     );
 
-    const result = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada balasan.';
-    res.json({ reply: result });
+    const reply = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
+    res.json({ reply });
 
   } catch (err) {
-    res.status(500).json({ reply: 'Error: ' + err.message });
+    console.error('API error:', err.message);
+    res.status(500).json({ reply: '⚠️ Gagal memproses permintaan.' });
   }
 });
 
-app.listen(3000, () => console.log('Server running on port 3000'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server is running on port ${PORT}`);
+});
