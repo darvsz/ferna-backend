@@ -1,12 +1,16 @@
-const express = require('express');
-const axios = require('axios');
-require('dotenv').config();
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import axios from 'axios';
+
+dotenv.config();
 
 const app = express();
+app.use(cors()); // penting biar bisa diakses dari netlify
 app.use(express.json());
 
-app.post('/ask', async (req, res) => {
-  const prompt = req.body.prompt;
+app.post('/chat', async (req, res) => {
+  const prompt = req.body.message;
 
   try {
     const response = await axios.post(
@@ -25,10 +29,12 @@ app.post('/ask', async (req, res) => {
       }
     );
 
-    res.json({ result: response.data.choices[0].text });
+    const result = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada balasan.';
+    res.json({ reply: result });
+
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ reply: 'Error: ' + err.message });
   }
 });
 
-app.listen(3000, () => console.log('Running on port 3000'));
+app.listen(3000, () => console.log('Server running on port 3000'));
