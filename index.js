@@ -29,7 +29,7 @@ app.post('/chat', async (req, res) => {
       }
     );
 
-    const reply = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
+    const reply = response.data.output?.choices?.[0]?.text || 'Tidak ada jawaban.';
     res.json({ reply });
 
   } catch (err) {
