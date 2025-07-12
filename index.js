@@ -24,7 +24,7 @@ app.post('/chat', async (req, res) => {
     const response = await axios.post(
       'https://api.together.xyz/inference',
       {
-        model: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",  // model AI gratis
+        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",  // model AI gratis
         prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis TANPA SARAN ATAU kalimat tidak penting lainya , HANYA resep saja TANPA PENJELASAN, RESEP tiap herbal per gram dalam format JSON.`,
         max_tokens: 500,
         temperature: 0.7
