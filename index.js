@@ -16,7 +16,7 @@ app.post('/chat', async (req, res) => {
     const response = await axios.post(
       'https://api.together.xyz/inference',
       {
-        model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+         model="deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",
         prompt: `Kamu adalah ahli herbal. ${prompt}`,
         max_tokens: 200,
         temperature: 0.7
