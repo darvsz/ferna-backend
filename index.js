@@ -15,7 +15,7 @@ app.post('/chat', async (req, res) => {
   // Bisa menerima dua format: nama/keluhan atau name/message
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
-
+ console.log('📥 Data diterima dari frontend:', { nama, keluhan });
   if (!nama || !keluhan) {
     return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
   }
@@ -71,6 +71,7 @@ app.get('/', (req, res) => {
 
 // === Start Server ===
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`🚀 Server Tabib AI running on port ${PORT}`);
 });
