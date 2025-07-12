@@ -21,7 +21,7 @@ Jika pasien menyebutkan keluhan, balaslah dengan:
 3. Pantangan atau anjuran tambahan.
 
 Berikut keluhannya:
-"${prompt}"
+"${req.body.message}"
   `;
 
   try {
