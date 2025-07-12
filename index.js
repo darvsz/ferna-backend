@@ -25,7 +25,7 @@ app.post('/chat', async (req, res) => {
       'https://api.together.xyz/inference',
       {
         model: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",  // model AI gratis
-        prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis dalam format JSON per gram dan mudah dipahami untuk otomatisasi.`,
+        prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis HANYA dalam format JSON per gram dan mudah dipahami untuk otomatisasi.`,
         max_tokens: 200,
         temperature: 0.7
       },
