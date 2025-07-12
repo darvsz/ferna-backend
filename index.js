@@ -4,32 +4,25 @@ import dotenv from 'dotenv';
 import axios from 'axios';
 
 dotenv.config();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+let resepTerakhir = null;  // Simpan data terakhir untuk ESP32
+
 app.post('/chat', async (req, res) => {
-  //const prompt = req.body.message;
-const prompt = `
-Kamu adalah seorang tabib herbal tradisional.
-Tugasmu adalah memberikan saran pengobatan alami berbasis tanaman herbal kepada pasien.
+  const { nama, keluhan } = req.body;
 
-Jika pasien menyebutkan keluhan, balaslah dengan:
-1. Diagnosa ringan berdasarkan keluhan.
-2. Resep herbal: sebutkan nama tanaman, dosis, dan cara penggunaan.
-3. Pantangan atau anjuran tambahan.
-
-Berikut keluhannya:
-"${req.body.message}"
-  `;
+  if (!nama || !keluhan) {
+    return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
+  }
 
   try {
     const response = await axios.post(
       'https://api.together.xyz/inference',
       {
-        model:"deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",
-        prompt: prompt,
+        model: "meta-llama/Llama-3-8B-Instruct",  // Atau model gratis kamu
+        prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis dalam format JSON per gram dan mudah dipahami untuk otomatisasi.`,
         max_tokens: 200,
         temperature: 0.7
       },
@@ -41,19 +34,40 @@ Berikut keluhannya:
       }
     );
 
-    const reply = response.data.output?.choices?.[0]?.text || 'Tidak ada jawaban.';
-    res.json({ reply });
+    const output = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
+    
+    // Simpan hasil untuk diakses ESP32
+    resepTerakhir = {
+      nama,
+      keluhan,
+      resep: output,
+      timestamp: new Date().toISOString()
+    };
+
+    // Kirim ke frontend (tapi bisa kosong karena frontend tidak perlu lihat hasil)
+    res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
 
   } catch (err) {
     console.error('API error:', err.message);
-    res.status(500).json({ reply: '⚠️ Gagal memproses permintaan.' });
+    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI.' });
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("Server is running");
+// === Endpoint untuk ESP32 ambil data ===
+app.get('/resep', (req, res) => {
+  if (resepTerakhir) {
+    res.json(resepTerakhir);
+  } else {
+    res.status(404).json({ message: 'Belum ada resep.' });
+  }
 });
+
+// === Ping endpoint ===
+app.get('/', (req, res) => {
+  res.send('🌿 Tabib AI Backend Aktif');
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`🚀 Server Tabib AI running on port ${PORT}`);
 });
