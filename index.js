@@ -37,7 +37,8 @@ app.post('/chat', async (req, res) => {
       }
     );
 
-    const output = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
+    //const output = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
+   const output = response.data.choices?.[0]?.text || response.data.output || 'Tidak ada jawaban.';
 
     resepTerakhir = {
       nama,
