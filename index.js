@@ -10,8 +10,11 @@ app.use(express.json());
 
 let resepTerakhir = null;  // Simpan data terakhir untuk ESP32
 
+// === POST untuk minta resep ===
 app.post('/chat', async (req, res) => {
-  const { nama, keluhan } = req.body;
+  // Bisa menerima dua format: nama/keluhan atau name/message
+  const nama = req.body.nama || req.body.name;
+  const keluhan = req.body.keluhan || req.body.message;
 
   if (!nama || !keluhan) {
     return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
@@ -21,7 +24,7 @@ app.post('/chat', async (req, res) => {
     const response = await axios.post(
       'https://api.together.xyz/inference',
       {
-        model: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",  // Atau model gratis kamu
+        model: "deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",  // model AI gratis
         prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis dalam format JSON per gram dan mudah dipahami untuk otomatisasi.`,
         max_tokens: 200,
         temperature: 0.7
@@ -35,8 +38,7 @@ app.post('/chat', async (req, res) => {
     );
 
     const output = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
-    
-    // Simpan hasil untuk diakses ESP32
+
     resepTerakhir = {
       nama,
       keluhan,
@@ -44,7 +46,6 @@ app.post('/chat', async (req, res) => {
       timestamp: new Date().toISOString()
     };
 
-    // Kirim ke frontend (tapi bisa kosong karena frontend tidak perlu lihat hasil)
     res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
 
   } catch (err) {
@@ -53,7 +54,7 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// === Endpoint untuk ESP32 ambil data ===
+// === GET untuk ambil resep terakhir (oleh ESP32 / monitoring) ===
 app.get('/resep', (req, res) => {
   if (resepTerakhir) {
     res.json(resepTerakhir);
@@ -67,6 +68,7 @@ app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif');
 });
 
+// === Start Server ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server Tabib AI running on port ${PORT}`);
