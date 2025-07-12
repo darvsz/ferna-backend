@@ -17,7 +17,13 @@ app.post('/chat', async (req, res) => {
       'https://api.together.xyz/inference',
       {
         model:"deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",
-        prompt: `Kamu adalah ahli herbal. ${prompt}`,
+        prompt: `Kamu adalah seorang tabib herbal tradisional.
+Tugasmu adalah memberikan saran pengobatan alami berbasis tanaman herbal kepada pasien.
+
+Jika pasien menyebutkan keluhan, balaslah dengan:
+1. Diagnosa ringan berdasarkan keluhan.
+2. Resep herbal: sebutkan nama tanaman, dosis, dan cara penggunaan.
+3. Pantangan atau anjuran tambahan. ${prompt}`,
         max_tokens: 200,
         temperature: 0.7
       },
