@@ -10,20 +10,26 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/chat', async (req, res) => {
-  const prompt = req.body.message;
+  //const prompt = req.body.message;
+const prompt = `
+Kamu adalah seorang tabib herbal tradisional.
+Tugasmu adalah memberikan saran pengobatan alami berbasis tanaman herbal kepada pasien.
+
+Jika pasien menyebutkan keluhan, balaslah dengan:
+1. Diagnosa ringan berdasarkan keluhan.
+2. Resep herbal: sebutkan nama tanaman, dosis, dan cara penggunaan.
+3. Pantangan atau anjuran tambahan.
+
+Berikut keluhannya:
+"${userMessage}"
+  `;
 
   try {
     const response = await axios.post(
       'https://api.together.xyz/inference',
       {
         model:"deepseek-ai/DeepSeek-R1-Distill-Llama-70B-free",
-        prompt: `Kamu adalah seorang tabib herbal tradisional.
-Tugasmu adalah memberikan saran pengobatan alami berbasis tanaman herbal kepada pasien.
-
-Jika pasien menyebutkan keluhan, balaslah dengan:
-1. Diagnosa ringan berdasarkan keluhan.
-2. Resep herbal: sebutkan nama tanaman, dosis, dan cara penggunaan.
-3. Pantangan atau anjuran tambahan. ${prompt}`,
+        prompt: prompt,
         max_tokens: 200,
         temperature: 0.7
       },
