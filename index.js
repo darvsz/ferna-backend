@@ -12,33 +12,42 @@ let resepTerakhir = null;  // Simpan data terakhir untuk ESP32
 
 // === POST untuk minta resep ===
 app.post('/chat', async (req, res) => {
-  // Bisa menerima dua format: nama/keluhan atau name/message
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
- console.log('📥 Data diterima dari frontend:', { nama, keluhan });
+
+  console.log('📥 Data diterima dari frontend:', { nama, keluhan });
+
   if (!nama || !keluhan) {
     return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
   }
 
   try {
     const response = await axios.post(
-      'https://api.together.xyz/inference',
+      'https://api.openai.com/v1/chat/completions',
       {
-        model: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",  // model AI gratis
-        prompt: `Kamu adalah tabib ahli herbal. Berikan resep herbal alami untuk keluhan berikut:\n\nNama pasien: ${nama}\nKeluhan: ${keluhan}\n\nTulis TANPA SARAN ATAU kalimat tidak penting lainya , HANYA resep saja TANPA PENJELASAN, RESEP tiap herbal per gram dalam format JSON.`,
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: `Kamu adalah tabib ahli herbal. Jawab hanya dengan resep herbal dalam format JSON. Jangan berikan penjelasan atau kalimat tambahan.`
+          },
+          {
+            role: 'user',
+            content: `Berikan resep herbal alami untuk:\nNama pasien: ${nama}\nKeluhan: ${keluhan}`
+          }
+        ],
         max_tokens: 500,
         temperature: 0.7
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.TOGETHER_API_KEY}`,
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    //const output = response.data.output || response.data.choices?.[0]?.text || 'Tidak ada jawaban.';
-   const output = response.data.choices?.[0]?.text || response.data.output || 'Tidak ada jawaban.';
+    const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
 
     resepTerakhir = {
       nama,
@@ -51,7 +60,7 @@ app.post('/chat', async (req, res) => {
 
   } catch (err) {
     console.error('API error:', err.message);
-    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI.' });
+    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI (OpenAI).' });
   }
 });
 
@@ -71,7 +80,6 @@ app.get('/', (req, res) => {
 
 // === Start Server ===
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log(`🚀 Server Tabib AI running on port ${PORT}`);
 });
