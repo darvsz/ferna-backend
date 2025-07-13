@@ -10,14 +10,39 @@ app.use(cors());
 app.use(express.json());
 
 let resepTerakhir = null;
+const statusMap = {}; // Simpan status pasien
 
 // === MQTT Setup
 const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
   username: process.env.MQTT_USER,
   password: process.env.MQTT_PASS
 });
-mqttClient.on('connect', () => console.log('📡 Terhubung ke HiveMQ!'));
+
+mqttClient.on('connect', () => {
+  console.log('📡 Terhubung ke HiveMQ!');
+  mqttClient.subscribe('tabibai/status', err => {
+    if (err) console.error('❌ Gagal subscribe:', err.message);
+    else console.log('📡 Subscribed ke tabibai/status');
+  });
+});
+
 mqttClient.on('error', err => console.error('❌ MQTT Error:', err.message));
+
+// === Terima pesan dari MQTT dan update status
+mqttClient.on('message', (topic, message) => {
+  if (topic === 'tabibai/status') {
+    try {
+      const data = JSON.parse(message.toString());
+      if (data.nama && data.status === 'done') {
+        console.log(`✅ Resep ${data.nama} selesai via MQTT`);
+        statusMap[data.nama.toLowerCase()] = 'done';
+      }
+    } catch (e) {
+      console.error('❌ Gagal parsing pesan MQTT:', e.message);
+    }
+  }
+});
+
 function kirimKeESP32(resepData) {
   mqttClient.publish('tabibai/resep', JSON.stringify(resepData), { qos: 1 });
 }
@@ -51,6 +76,7 @@ app.post('/chat', async (req, res) => {
 
     const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
     resepTerakhir = { nama, keluhan, resep: output, timestamp: new Date().toISOString() };
+    statusMap[nama.toLowerCase()] = 'processing'; // tandai sebagai diproses
     kirimKeESP32(resepTerakhir);
 
     res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
@@ -61,10 +87,13 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// === Ambil resep (optional)
-app.get('/resep', (req, res) => {
-  if (resepTerakhir) res.json(resepTerakhir);
-  else res.status(404).json({ message: 'Belum ada resep.' });
+// === Endpoint status pasien
+app.get('/status', (req, res) => {
+  const nama = (req.query.nama || '').toLowerCase();
+  if (!nama) return res.status(400).json({ status: 'error', message: 'Nama dibutuhkan' });
+
+  const status = statusMap[nama];
+  res.json({ status: status || 'not_found' });
 });
 
 app.get('/', (req, res) => {
