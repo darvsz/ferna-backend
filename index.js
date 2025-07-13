@@ -2,24 +2,32 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
+import mqtt from 'mqtt';
 
 dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-let resepTerakhir = null;  // Simpan data terakhir untuk ESP32
+let resepTerakhir = null;
 
-// === POST untuk minta resep ===
+// === MQTT Setup
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS
+});
+mqttClient.on('connect', () => console.log('📡 Terhubung ke HiveMQ!'));
+mqttClient.on('error', err => console.error('❌ MQTT Error:', err.message));
+function kirimKeESP32(resepData) {
+  mqttClient.publish('tabibai/resep', JSON.stringify(resepData), { qos: 1 });
+}
+
+// === Endpoint chat
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
 
-  console.log('📥 Data diterima dari frontend:', { nama, keluhan });
-
-  if (!nama || !keluhan) {
-    return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
-  }
+  if (!nama || !keluhan) return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
 
   try {
     const response = await axios.post(
@@ -27,21 +35,8 @@ app.post('/chat', async (req, res) => {
       {
         model: 'gpt-3.5-turbo',
         messages: [
-          {
-            role: 'system',
-            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dalam format JSON yang valid dan hanya dalam bentuk menyatakan herbal dan gramnya (hanya gram bukan satuan lain) , Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.
-** contohnya seperti berikut: 
-{
-  "jahe": "3 gram",
-  "kunyit": "2 gram",
-  ...
-}
-Tanpa penjelasan, tanpa salam pembuka atau penutup.`
-          },
-          {
-            role: 'user',
-            content: `Berikan resep herbal alami untuk:\nNama pasien: ${nama}\nKeluhan: ${keluhan}`
-          }
+          { role: 'system', content: `Kamu adalah tabib ahli herbal. Jawab hanya dengan resep herbal dalam format JSON. Jangan berikan penjelasan atau kalimat tambahan.` },
+          { role: 'user', content: `Berikan resep herbal alami untuk:\nNama pasien: ${nama}\nKeluhan: ${keluhan}` }
         ],
         max_tokens: 500,
         temperature: 0.7
@@ -55,38 +50,26 @@ Tanpa penjelasan, tanpa salam pembuka atau penutup.`
     );
 
     const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
-
-    resepTerakhir = {
-      nama,
-      keluhan,
-      resep: output,
-      timestamp: new Date().toISOString()
-    };
+    resepTerakhir = { nama, keluhan, resep: output, timestamp: new Date().toISOString() };
+    kirimKeESP32(resepTerakhir);
 
     res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
 
   } catch (err) {
-    console.error('API error:', err.response?.data || err.message);
-    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI (OpenAI).' });
+    console.error('API error:', err.message);
+    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI.' });
   }
 });
 
-// === GET untuk ambil resep terakhir (oleh ESP32 / monitoring) ===
+// === Ambil resep (optional)
 app.get('/resep', (req, res) => {
-  if (resepTerakhir) {
-    res.json(resepTerakhir);
-  } else {
-    res.status(404).json({ message: 'Belum ada resep.' });
-  }
+  if (resepTerakhir) res.json(resepTerakhir);
+  else res.status(404).json({ message: 'Belum ada resep.' });
 });
 
-// === Ping endpoint ===
 app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif');
 });
 
-// === Start Server ===
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server Tabib AI running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server Tabib AI running on port ${PORT}`));
