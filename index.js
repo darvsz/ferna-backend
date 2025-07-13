@@ -10,44 +10,21 @@ app.use(cors());
 app.use(express.json());
 
 let resepTerakhir = null;
-const statusMap = {}; // Simpan status pasien
+let statusSementara = {}; // { "nama": "status" }
 
 // === MQTT Setup
 const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
   username: process.env.MQTT_USER,
   password: process.env.MQTT_PASS
 });
-
-mqttClient.on('connect', () => {
-  console.log('📡 Terhubung ke HiveMQ!');
-  mqttClient.subscribe('tabibai/status', err => {
-    if (err) console.error('❌ Gagal subscribe:', err.message);
-    else console.log('📡 Subscribed ke tabibai/status');
-  });
-});
-
+mqttClient.on('connect', () => console.log('📡 Terhubung ke HiveMQ!'));
 mqttClient.on('error', err => console.error('❌ MQTT Error:', err.message));
-
-// === Terima pesan dari MQTT dan update status
-mqttClient.on('message', (topic, message) => {
-  if (topic === 'tabibai/status') {
-    try {
-      const data = JSON.parse(message.toString());
-      if (data.nama && data.status === 'done') {
-        console.log(`✅ Resep ${data.nama} selesai via MQTT`);
-        statusMap[data.nama.toLowerCase()] = 'done';
-      }
-    } catch (e) {
-      console.error('❌ Gagal parsing pesan MQTT:', e.message);
-    }
-  }
-});
 
 function kirimKeESP32(resepData) {
   mqttClient.publish('tabibai/resep', JSON.stringify(resepData), { qos: 1 });
 }
 
-// === Endpoint chat
+// === Endpoint untuk AI Chat
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
@@ -76,8 +53,21 @@ app.post('/chat', async (req, res) => {
 
     const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
     resepTerakhir = { nama, keluhan, resep: output, timestamp: new Date().toISOString() };
-    statusMap[nama.toLowerCase()] = 'processing'; // tandai sebagai diproses
+
+    // Simpan status pasien
+    statusSementara[nama.toLowerCase()] = 'proses';
+
+    // Kirim ke ESP32 / HiveMQ
     kirimKeESP32(resepTerakhir);
+
+    // Simulasikan pengolahan: ubah ke "done" dalam 2–5 detik
+    const delay = Math.floor(Math.random() * 3000) + 2000; // 2000-5000 ms
+    setTimeout(() => {
+      const statusMsg = { nama, status: "done" };
+      mqttClient.publish('tabibai/status', JSON.stringify(statusMsg), { qos: 1 });
+      statusSementara[nama.toLowerCase()] = 'done';
+      console.log(`✅ Status untuk ${nama} diubah jadi DONE via MQTT`);
+    }, delay);
 
     res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
 
@@ -87,15 +77,25 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// === Endpoint status pasien
+// === Endpoint untuk polling status frontend
 app.get('/status', (req, res) => {
-  const nama = (req.query.nama || '').toLowerCase();
-  if (!nama) return res.status(400).json({ status: 'error', message: 'Nama dibutuhkan' });
+  const nama = req.query.nama?.toLowerCase();
+  if (!nama) return res.status(400).json({ error: 'Nama wajib dikirim sebagai query (?nama=...)' });
 
-  const status = statusMap[nama];
-  res.json({ status: status || 'not_found' });
+  const status = statusSementara[nama];
+  res.json({ status: status || 'unknown' });
 });
 
+// === Endpoint untuk melihat hasil resep terakhir
+app.get('/resep', (req, res) => {
+  if (resepTerakhir) {
+    return res.json(resepTerakhir);
+  } else {
+    return res.status(404).json({ message: 'Belum ada resep.' });
+  }
+});
+
+// === Root route
 app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif');
 });
