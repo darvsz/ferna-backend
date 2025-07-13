@@ -61,7 +61,7 @@ app.post('/chat', async (req, res) => {
     kirimKeESP32(resepTerakhir);
 
     // Simulasikan pengolahan: ubah ke "done" dalam 2–5 detik
-    const delay = Math.floor(Math.random() * 3000) + 2000; // 2000-5000 ms
+    const delay = Math.floor(Math.random() * 3000) + 6000; // 2000-5000 ms
     setTimeout(() => {
       const statusMsg = { nama, status: "done" };
       mqttClient.publish('tabibai/status', JSON.stringify(statusMsg), { qos: 1 });
