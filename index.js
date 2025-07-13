@@ -29,7 +29,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dalam format JSON yang valid dan hanya dalam bentuk menyatakan herbal dan gramnya , Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.
+            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dalam format JSON yang valid dan hanya dalam bentuk menyatakan herbal dan gramnya (hanya gram bukan satuan lain) , Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.
 ** contohnya seperti berikut: 
 {
   "jahe": "3 gram",
