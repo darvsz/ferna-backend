@@ -37,7 +37,7 @@ app.post('/chat', async (req, res) => {
       {
         model: 'gpt-3.5-turbo',
         messages: [
-          { role: 'system', content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dan gramnya dalam format JSON yang valid** Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. 
+          { role: 'system', content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dan gramnya (bukan satuan lain alias hanya gram) dalam format JSON yang valid** Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. 
  contoh seperti berikut: 
 {
   "jahe": "3 gram",
