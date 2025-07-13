@@ -59,7 +59,7 @@ app.post('/chat', async (req, res) => {
     res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
 
   } catch (err) {
-    console.error('API error:', err.message);
+    console.error('API error:', err.response?.data || err.message);
     res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI (OpenAI).' });
   }
 });
