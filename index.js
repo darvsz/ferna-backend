@@ -29,7 +29,13 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib ahli herbal. Jawab hanya dengan resep herbal dalam format JSON. Jangan berikan penjelasan atau kalimat tambahan.`
+            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dalam format JSON yang valid dan hanya dalam bentuk menyatakan herbal dan gramnya** seperti berikut: 
+{
+  "jahe": "3 gram",
+  "kunyit": "2 gram",
+  ...
+}
+Tanpa penjelasan, tanpa salam pembuka atau penutup.`
           },
           {
             role: 'user',
