@@ -91,6 +91,7 @@ app.post('/chat', async (req, res) => {
           merchant_ref: kodeInvoice,
           amount: total,
           customer_name: nama,
+	  customer_email: `${nama.replace(/\s+/g, '').toLowerCase()}@example.com`,
           order_items: Object.entries(parsed).map(([bahan, jumlah]) => ({
             name: bahan, price: 300, quantity: jumlah
           })),
