@@ -123,8 +123,8 @@ app.post('/bayar', async (req, res) => {
 
     const { total } = hitungTotalBayar(data.resep);
     const invoiceRef = 'INV' + Date.now();
+const tripayRes = await axios.post('https://tripay.co.id/api-sandbox/transaction/create', {
 
-    const tripayRes = await axios.post('https://tripay.co.id/api/transaction/create', {
       method: 'QRIS',
       merchant_ref: invoiceRef,
       amount: total,
