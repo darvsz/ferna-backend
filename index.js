@@ -121,7 +121,7 @@ app.get('/status', async (req, res) => {
 app.get('/daftar-pasien', async (req, res) => {
   try {
     const snapshot = await db.collection('antrian')
-      .where('status', '==', 'proses')
+      .where('status', '==', 'done')
       .orderBy('waktu', 'asc')
       .limit(10) // batas maksimal yang diambil
       .get();
