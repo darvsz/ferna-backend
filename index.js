@@ -10,16 +10,17 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === Firebase Init ===
+// === Firebase Init (pakai BASE64)
 try {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+  const decoded = Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf8');
+  const serviceAccount = JSON.parse(decoded);
   initializeApp({ credential: cert(serviceAccount) });
-  console.log('✅ Firebase initialized');
+  console.log('✅ Firebase initialized via Base64 key');
 } catch (err) {
   console.error('🔥 Gagal inisialisasi Firebase:', err.message);
 }
-const db = getFirestore();
 
+const db = getFirestore();
 let resepTerakhir = null;
 
 // === Endpoint untuk AI Chat
