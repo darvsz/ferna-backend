@@ -2,34 +2,35 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import axios from 'axios';
-import mqtt from 'mqtt';
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-let resepTerakhir = null;
-let statusSementara = {}; // { "nama": "status" }
-
-// === MQTT Setup
-const mqttClient = mqtt.connect(process.env.MQTT_BROKER, {
-  username: process.env.MQTT_USER,
-  password: process.env.MQTT_PASS
-});
-mqttClient.on('connect', () => console.log('📡 Terhubung ke HiveMQ!'));
-mqttClient.on('error', err => console.error('❌ MQTT Error:', err.message));
-
-function kirimKeESP32(resepData) {
-  mqttClient.publish('tabibai/resep', JSON.stringify(resepData), { qos: 1 });
+// === Firebase Init ===
+try {
+  const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
+  initializeApp({ credential: cert(serviceAccount) });
+  console.log('✅ Firebase initialized');
+} catch (err) {
+  console.error('🔥 Gagal inisialisasi Firebase:', err.message);
 }
+const db = getFirestore();
+
+let resepTerakhir = null;
 
 // === Endpoint untuk AI Chat
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
 
-  if (!nama || !keluhan) return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
+  if (!nama || !keluhan) {
+    console.warn('⚠️ Nama atau keluhan kosong');
+    return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
+  }
 
   try {
     const response = await axios.post(
@@ -37,16 +38,14 @@ app.post('/chat', async (req, res) => {
       {
         model: 'gpt-3.5-turbo',
         messages: [
-          { role: 'system', content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan **resep herbal dan gramnya (bukan satuan lain alias hanya gram) dalam format JSON yang valid** Gunakan HANYA bahan herbal dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. 
- contoh seperti berikut: 
-{
-  "jahe": "3 gram",
-  "kunyit": "2 gram",
-  ...
-}
-Tanpa penjelasan, tanpa salam pembuka atau penutup.`
-},
-          { role: 'user', content: `Berikan resep herbal alami untuk:\nNama pasien: ${nama}\nKeluhan: ${keluhan}` }
+          {
+            role: 'system',
+            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan resep herbal dan gramnya (bukan satuan lain alias hanya gram) dalam format JSON yang valid. Gunakan HANYA bahan herbal dari: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. Tanpa penjelasan.`
+          },
+          {
+            role: 'user',
+            content: `Nama pasien: ${nama}\nKeluhan: ${keluhan}`
+          }
         ],
         max_tokens: 500,
         temperature: 0.7
@@ -60,50 +59,73 @@ Tanpa penjelasan, tanpa salam pembuka atau penutup.`
     );
 
     const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
-    resepTerakhir = { nama, keluhan, resep: output, timestamp: new Date().toISOString() };
+    resepTerakhir = { nama, keluhan, resep: output, status: 'proses', waktu: new Date() };
 
-    // Simpan status pasien
-    statusSementara[nama.toLowerCase()] = 'proses';
+    const docRef = await db.collection('antrian').add(resepTerakhir);
+    console.log(`📥 Resep untuk ${nama} disimpan ke Firestore`);
 
-    // Kirim ke ESP32 / HiveMQ
-    kirimKeESP32(resepTerakhir);
+    setTimeout(async () => {
+      try {
+        await docRef.update({ status: 'done' });
+        console.log(`✅ Status ${nama} diubah jadi DONE`);
+      } catch (e) {
+        console.error(`🔥 Gagal update status untuk ${nama}:`, e.message);
+      }
+    }, Math.random() * 3000 + 5000);
 
-    // Simulasikan pengolahan: ubah ke "done" dalam 2–5 detik
-    const delay = Math.floor(Math.random() * 3000) + 6000; // 2000-5000 ms
-    setTimeout(() => {
-      const statusMsg = { nama, status: "done" };
-      mqttClient.publish('tabibai/status', JSON.stringify(statusMsg), { qos: 1 });
-      statusSementara[nama.toLowerCase()] = 'done';
-      console.log(`✅ Status untuk ${nama} diubah jadi DONE via MQTT`);
-    }, delay);
-
-    res.json({ status: "✅ Resep dikirim ke tabib. Menunggu proses.", resep: output });
+    res.json({ status: '✅ Resep dikirim ke tabib. Menunggu proses.', resep: output });
 
   } catch (err) {
-    console.error('API error:', err.message);
-    res.status(500).json({ reply: '⚠️ Gagal menghubungi tabib AI.' });
+    console.error('🔥 Gagal proses /chat:', err.response?.data || err.message);
+    res.status(500).json({
+      error: '⚠️ Gagal memproses permintaan.',
+      detail: err.response?.data || err.message
+    });
   }
 });
 
-// === Endpoint untuk polling status frontend
-app.get('/status', (req, res) => {
-  const nama = req.query.nama?.toLowerCase();
-  if (!nama) return res.status(400).json({ error: 'Nama wajib dikirim sebagai query (?nama=...)' });
+// === Endpoint status pasien
+app.get('/status', async (req, res) => {
+  const nama = (req.query.nama || '').toLowerCase();
+  if (!nama) {
+    console.warn('⚠️ Query nama kosong');
+    return res.status(400).json({ error: 'Nama wajib dikirim sebagai query (?nama=...)' });
+  }
 
-  const status = statusSementara[nama];
-  res.json({ status: status || 'unknown' });
+  try {
+    const snapshot = await db.collection('antrian')
+      .where('nama', '==', nama)
+      .orderBy('waktu', 'desc')
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) {
+      console.warn(`❌ Tidak ditemukan status untuk: ${nama}`);
+      return res.status(404).json({ status: '❌ Tidak ditemukan' });
+    }
+
+    const data = snapshot.docs[0].data();
+    res.json({ status: data.status });
+  } catch (err) {
+    console.error(`🔥 Gagal ambil status untuk ${nama}:`, err.message);
+    res.status(500).json({
+      error: 'Gagal mengambil status',
+      detail: err.message
+    });
+  }
 });
 
-// === Endpoint untuk melihat hasil resep terakhir
+// === Endpoint resep terakhir
 app.get('/resep', (req, res) => {
   if (resepTerakhir) {
-    return res.json(resepTerakhir);
+    res.json(resepTerakhir);
   } else {
-    return res.status(404).json({ message: 'Belum ada resep.' });
+    console.log('📭 Belum ada resep terakhir');
+    res.status(404).json({ message: 'Belum ada resep.' });
   }
 });
 
-// === Root route
+// === Root
 app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif');
 });
