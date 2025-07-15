@@ -10,7 +10,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === Firebase Init (pakai BASE64)
 try {
   const decoded = Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf8');
   const serviceAccount = JSON.parse(decoded);
@@ -23,15 +22,11 @@ try {
 const db = getFirestore();
 let resepTerakhir = null;
 
-// === Endpoint untuk AI Chat
+// === Endpoint AI Chat
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
-
-  if (!nama || !keluhan) {
-    console.warn('⚠️ Nama atau keluhan kosong');
-    return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
-  }
+  if (!nama || !keluhan) return res.status(400).json({ reply: '❌ Nama dan keluhan wajib diisi.' });
 
   try {
     const response = await axios.post(
@@ -41,7 +36,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib ahli herbal. Tugasmu adalah menjawab hanya dengan resep herbal dan gramnya (bukan satuan lain alias hanya gram) dalam format JSON yang valid. Gunakan HANYA bahan herbal dari: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. Tanpa penjelasan.`
+            content: `Kamu adalah tabib ahli herbal. Jawablah hanya dalam format JSON dengan bahan dari daftar berikut: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam. Gunakan hanya satuan gram. Tanpa penjelasan apapun.`
           },
           {
             role: 'user',
@@ -51,45 +46,25 @@ app.post('/chat', async (req, res) => {
         max_tokens: 500,
         temperature: 0.7
       },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
+      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
     );
 
-    const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
+    let parsed = {};
+    try {
+      parsed = JSON.parse(response.data.choices?.[0]?.message?.content || '{}');
+    } catch (e) {
+      parsed = response.data.choices?.[0]?.message?.content || '{}';
+    }
 
+    resepTerakhir = {
+      nama,
+      keluhan,
+      resep: parsed,
+      status: 'proses',
+      waktu: new Date()
+    };
 
-
-
-
-
-    //resepTerakhir = { nama, keluhan, resep: output, status: 'proses', waktu: new Date() };
-let parsed = {};
-try {
-  parsed = JSON.parse(output);
-} catch (e) {
-  console.warn('⚠️ Gagal parsing output, disimpan sebagai string');
-  parsed = output;
-}
-
-resepTerakhir = {
-  nama,
-  keluhan,
-  resep: parsed,
-  status: 'proses',
-  waktu: new Date()
-};
-
-    
-
-
-
-
-
-	const docRef = await db.collection('antrian').add(resepTerakhir);
+    const docRef = await db.collection('antrian').add(resepTerakhir);
     console.log(`📥 Resep untuk ${nama} disimpan ke Firestore`);
 
     setTimeout(async () => {
@@ -101,24 +76,105 @@ resepTerakhir = {
       }
     }, Math.random() * 3000 + 5000);
 
-    res.json({ status: '✅ Resep dikirim ke tabib. Menunggu proses.', resep: output });
+    res.json({ status: '✅ Resep dikirim ke tabib.', resep: parsed });
 
   } catch (err) {
     console.error('🔥 Gagal proses /chat:', err.response?.data || err.message);
-    res.status(500).json({
-      error: '⚠️ Gagal memproses permintaan.',
-      detail: err.response?.data || err.message
-    });
+    res.status(500).json({ error: '⚠️ Gagal memproses permintaan.' });
   }
 });
 
-// === Endpoint status pasien
+// === Hitung total bayar dari resep
+function hitungTotalBayar(resep) {
+  let totalGram = 0;
+  try {
+    for (let key in resep) {
+      const val = resep[key];
+      totalGram += typeof val === 'number' ? val : parseFloat(val);
+    }
+  } catch (e) {
+    console.warn('⚠️ Gagal hitung gram:', e.message);
+  }
+
+  const hargaPerGram = 300;
+  const biayaAwal = totalGram * hargaPerGram;
+  const biayaTransaksi = 750 + biayaAwal * 0.007;
+  const total = Math.ceil(biayaAwal + biayaTransaksi + 5000); // Bulat ke atas
+
+  return { total, rincian: { totalGram, biayaAwal, biayaTransaksi, biayaSistem: 5000 } };
+}
+
+// === Endpoint pembayaran QRIS
+app.post('/bayar', async (req, res) => {
+  const nama = req.body.nama;
+  if (!nama) return res.status(400).json({ error: 'Nama tidak ditemukan' });
+
+  try {
+    const snapshot = await db.collection('antrian')
+      .where('nama', '==', nama.toLowerCase())
+      .orderBy('waktu', 'desc')
+      .limit(1)
+      .get();
+
+    if (snapshot.empty) return res.status(404).json({ error: 'Data tidak ditemukan' });
+
+    const doc = snapshot.docs[0];
+    const data = doc.data();
+
+    const { total } = hitungTotalBayar(data.resep);
+    const invoiceRef = 'INV' + Date.now();
+
+    const tripayRes = await axios.post('https://tripay.co.id/api/transaction/create', {
+      method: 'QRIS',
+      merchant_ref: invoiceRef,
+      amount: total,
+      customer_name: nama,
+      order_items: [{ name: 'Resep Herbal', price: total, quantity: 1 }],
+      callback_url: `${process.env.BASE_URL}/callback`,
+      return_url: `${process.env.BASE_URL}/sukses.html`
+    }, {
+      headers: { Authorization: `Bearer ${process.env.TRIPAY_API_KEY}` }
+    });
+
+    const paymentUrl = tripayRes.data.data?.checkout_url;
+    await doc.ref.update({ invoiceRef, total, status: 'menunggu pembayaran' });
+
+    res.json({ payment_url: paymentUrl });
+
+  } catch (err) {
+    console.error('🔥 Gagal membuat link pembayaran:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Gagal membuat link pembayaran' });
+  }
+});
+
+// === Callback dari Tripay
+app.post('/callback', async (req, res) => {
+  const { merchant_ref, status } = req.body;
+  if (!merchant_ref) return res.status(400).json({ error: 'Merchant_ref tidak ada' });
+
+  try {
+    const snapshot = await db.collection('antrian')
+      .where('invoiceRef', '==', merchant_ref)
+      .limit(1)
+      .get();
+
+    if (!snapshot.empty && status === 'PAID') {
+      const doc = snapshot.docs[0];
+      await doc.ref.update({ status: 'paid' });
+      console.log(`💰 Pembayaran berhasil untuk ${merchant_ref}`);
+    }
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error('🔥 Callback gagal:', e.message);
+    res.status(500).json({ error: 'Callback gagal' });
+  }
+});
+
+// === Endpoint status
 app.get('/status', async (req, res) => {
   const nama = (req.query.nama || '').toLowerCase();
-  if (!nama) {
-    console.warn('⚠️ Query nama kosong');
-    return res.status(400).json({ error: 'Nama wajib dikirim sebagai query (?nama=...)' });
-  }
+  if (!nama) return res.status(400).json({ error: 'Nama wajib dikirim sebagai query' });
 
   try {
     const snapshot = await db.collection('antrian')
@@ -127,35 +183,23 @@ app.get('/status', async (req, res) => {
       .limit(1)
       .get();
 
-    if (snapshot.empty) {
-      console.warn(`❌ Tidak ditemukan status untuk: ${nama}`);
-      return res.status(404).json({ status: '❌ Tidak ditemukan' });
-    }
+    if (snapshot.empty) return res.status(404).json({ status: '❌ Tidak ditemukan' });
 
     const data = snapshot.docs[0].data();
     res.json({ status: data.status });
   } catch (err) {
-    console.error(`🔥 Gagal ambil status untuk ${nama}:`, err.message);
-    res.status(500).json({
-      error: 'Gagal mengambil status',
-      detail: err.message
-    });
+    res.status(500).json({ error: 'Gagal mengambil status' });
   }
 });
 
-
-// === Endpoint untuk daftar pasien yang statusnya 'proses'
+// === Endpoint lain tetap sama...
 app.get('/daftar-pasien', async (req, res) => {
   try {
     const snapshot = await db.collection('antrian')
       .where('status', '==', 'done')
       .orderBy('waktu', 'asc')
-      .limit(10) // batas maksimal yang diambil
+      .limit(10)
       .get();
-
-    if (snapshot.empty) {
-      return res.json({ daftar: [] });
-    }
 
     const daftar = snapshot.docs.map(doc => {
       const data = doc.data();
@@ -163,63 +207,42 @@ app.get('/daftar-pasien', async (req, res) => {
         id: doc.id,
         nama: data.nama,
         waktu: data.waktu.toDate?.().toISOString?.() || data.waktu
-        
       };
     });
 
     res.json({ daftar });
   } catch (err) {
-    console.error('🔥 Gagal ambil daftar pasien:', err.message);
-    res.status(500).json({ error: 'Gagal ambil daftar pasien', detail: err.message });
+    res.status(500).json({ error: 'Gagal ambil daftar pasien' });
   }
 });
 
-
-// === Endpoint resep berdasarkan ID (hanya bagian resep saja)
 app.get('/resep/:id', async (req, res) => {
   const id = req.params.id;
 
   try {
     const doc = await db.collection('antrian').doc(id).get();
-    if (!doc.exists) {
-      return res.status(404).json({ error: '❌ Resep tidak ditemukan' });
-    }
+    if (!doc.exists) return res.status(404).json({ error: '❌ Resep tidak ditemukan' });
 
     const data = doc.data();
-
-    // Coba parsing jika `resep` masih berupa string
     let resep = data.resep;
+
     if (typeof resep === 'string') {
-      try {
-        resep = JSON.parse(resep);
-      } catch (e) {
-        console.warn(`⚠️ Resep di ID ${id} tidak valid JSON`);
+      try { resep = JSON.parse(resep); } catch (e) {
         return res.status(500).json({ error: 'Resep tidak valid JSON' });
       }
     }
 
-    // Jika `resep` sudah dalam bentuk objek, langsung kirim
     res.json(resep);
-
   } catch (err) {
-    console.error(`🔥 Gagal ambil resep ${id}:`, err.message);
-    res.status(500).json({ error: 'Gagal ambil resep', detail: err.message });
+    res.status(500).json({ error: 'Gagal ambil resep' });
   }
 });
 
-
-
-// === Endpoint resep terakhir
 app.get('/resep', (req, res) => {
-  if (resepTerakhir) {
-    res.json(resepTerakhir);
-  } else {
-    console.log('📭 Belum ada resep terakhir');
-    res.status(404).json({ message: 'Belum ada resep.' });
-  }
+  if (resepTerakhir) res.json(resepTerakhir);
+  else res.status(404).json({ message: 'Belum ada resep.' });
 });
 
-// === Root
 app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif');
 });
