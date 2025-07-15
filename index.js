@@ -116,6 +116,39 @@ app.get('/status', async (req, res) => {
   }
 });
 
+
+// === Endpoint untuk daftar pasien yang statusnya 'proses'
+app.get('/daftar-pasien', async (req, res) => {
+  try {
+    const snapshot = await db.collection('antrian')
+      .where('status', '==', 'proses')
+      .orderBy('waktu', 'asc')
+      .limit(10) // batas maksimal yang diambil
+      .get();
+
+    if (snapshot.empty) {
+      return res.json({ daftar: [] });
+    }
+
+    const daftar = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        nama: data.nama,
+        waktu: data.waktu.toDate?.().toISOString?.() || data.waktu,
+        status: data.status
+      };
+    });
+
+    res.json({ daftar });
+  } catch (err) {
+    console.error('🔥 Gagal ambil daftar pasien:', err.message);
+    res.status(500).json({ error: 'Gagal ambil daftar pasien', detail: err.message });
+  }
+});
+
+
+
 // === Endpoint resep terakhir
 app.get('/resep', (req, res) => {
   if (resepTerakhir) {
