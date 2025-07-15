@@ -60,9 +60,36 @@ app.post('/chat', async (req, res) => {
     );
 
     const output = response.data.choices?.[0]?.message?.content || 'Tidak ada jawaban.';
-    resepTerakhir = { nama, keluhan, resep: output, status: 'proses', waktu: new Date() };
 
-    const docRef = await db.collection('antrian').add(resepTerakhir);
+
+
+
+
+
+    //resepTerakhir = { nama, keluhan, resep: output, status: 'proses', waktu: new Date() };
+let parsed = {};
+try {
+  parsed = JSON.parse(output);
+} catch (e) {
+  console.warn('⚠️ Gagal parsing output, disimpan sebagai string');
+  parsed = output;
+}
+
+resepTerakhir = {
+  nama,
+  keluhan,
+  resep: parsed,
+  status: 'proses',
+  waktu: new Date()
+};
+
+    
+
+
+
+
+
+	const docRef = await db.collection('antrian').add(resepTerakhir);
     console.log(`📥 Resep untuk ${nama} disimpan ke Firestore`);
 
     setTimeout(async () => {
@@ -135,8 +162,8 @@ app.get('/daftar-pasien', async (req, res) => {
       return {
         id: doc.id,
         nama: data.nama,
-        waktu: data.waktu.toDate?.().toISOString?.() || data.waktu,
-        status: data.status
+        waktu: data.waktu.toDate?.().toISOString?.() || data.waktu
+        
       };
     });
 
@@ -144,6 +171,39 @@ app.get('/daftar-pasien', async (req, res) => {
   } catch (err) {
     console.error('🔥 Gagal ambil daftar pasien:', err.message);
     res.status(500).json({ error: 'Gagal ambil daftar pasien', detail: err.message });
+  }
+});
+
+
+// === Endpoint resep berdasarkan ID (hanya bagian resep saja)
+app.get('/resep/:id', async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const doc = await db.collection('antrian').doc(id).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: '❌ Resep tidak ditemukan' });
+    }
+
+    const data = doc.data();
+
+    // Coba parsing jika `resep` masih berupa string
+    let resep = data.resep;
+    if (typeof resep === 'string') {
+      try {
+        resep = JSON.parse(resep);
+      } catch (e) {
+        console.warn(`⚠️ Resep di ID ${id} tidak valid JSON`);
+        return res.status(500).json({ error: 'Resep tidak valid JSON' });
+      }
+    }
+
+    // Jika `resep` sudah dalam bentuk objek, langsung kirim
+    res.json(resep);
+
+  } catch (err) {
+    console.error(`🔥 Gagal ambil resep ${id}:`, err.message);
+    res.status(500).json({ error: 'Gagal ambil resep', detail: err.message });
   }
 });
 
