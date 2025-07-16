@@ -32,9 +32,8 @@ function hitungTotalBayar(resep) {
 
   const hargaPerGram = 300;
   const biayaAwal = totalGram * hargaPerGram;
-  const biayaTambahan = 750 + (0.007 * biayaAwal);
   const biayaSistem = 5000;
-  const total = Math.ceil(biayaAwal + biayaTambahan + biayaSistem);
+  const total = Math.ceil(biayaAwal + biayaSistem);
 
   return { total, rincian: { totalGram, biayaAwal, biayaTambahan, biayaSistem } };
 }
@@ -53,7 +52,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
+            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram sesuiakan untuk dicampur sebagai ramuan 200mililiter air. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
           },
           { role: 'user', content: `Nama: ${nama}\nKeluhan: ${keluhan}` }
         ],
