@@ -32,7 +32,7 @@ function hitungTotalBayar(resep) {
 
   const hargaPerGram = 300;
   const biayaAwal = totalGram * hargaPerGram;
-  const biayaSistem = 5000;
+  const biayaSistem = 4000;
 
   const totalKasar = biayaAwal + biayaSistem;
   const total = Math.ceil(totalKasar / 1000) * 1000; // Pembulatan ke atas ribuan
@@ -54,7 +54,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram, untuk ramuan 200ml maksimal 20 gram total. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
+            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram maksimal 20 gram total. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
           },
           { role: 'user', content: `Nama: ${nama}\nKeluhan: ${keluhan}` }
         ],
@@ -84,7 +84,7 @@ app.post('/chat', async (req, res) => {
       resep: parsed,
       status: 'proses',
       total,
-      pembayaran: 'belum',
+      //pembayaran: 'belum',
       waktu: new Date()
     };
 
@@ -129,7 +129,7 @@ app.get('/status', async (req, res) => {
     if (snapshot.empty) return res.status(404).json({ status: '❌ Tidak ditemukan' });
 
     const data = snapshot.docs[0].data();
-    res.json({ status: data.status, pembayaran: data.pembayaran, total: data.total });
+    res.json({ status: data.status, total: data.total });
   } catch (err) {
     res.status(500).json({ error: 'Gagal mengambil status' });
   }
