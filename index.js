@@ -23,7 +23,7 @@ try {
 const db = getFirestore();
 let resepTerakhir = null;
 
-// === Fungsi hitung harga resep
+// === Fungsi hitung harga resep + pembulatan
 function hitungTotalBayar(resep) {
   let totalGram = 0;
   for (let bahan in resep) {
@@ -33,12 +33,14 @@ function hitungTotalBayar(resep) {
   const hargaPerGram = 300;
   const biayaAwal = totalGram * hargaPerGram;
   const biayaSistem = 5000;
-  const total = Math.ceil(biayaAwal + biayaSistem);
 
-  return { total, rincian: { totalGram, biayaAwal, biayaTambahan, biayaSistem } };
+  const totalKasar = biayaAwal + biayaSistem;
+  const total = Math.ceil(totalKasar / 1000) * 1000; // Pembulatan ke atas ribuan
+
+  return { total, rincian: { totalGram, biayaAwal, biayaSistem } };
 }
 
-// === Endpoint /chat → tabib & simpan Firestore
+// === Endpoint /chat → kirim ke AI, hitung, simpan Firestore
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
@@ -52,7 +54,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram sesuiakan untuk dicampur sebagai ramuan 200mililiter air maksimal total herbal dalam resep adalah 20gram. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
+            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram, untuk ramuan 200ml maksimal 20 gram total. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
           },
           { role: 'user', content: `Nama: ${nama}\nKeluhan: ${keluhan}` }
         ],
@@ -70,19 +72,17 @@ app.post('/chat', async (req, res) => {
     try {
       parsed = JSON.parse(aiRes.data.choices?.[0]?.message?.content || '{}');
     } catch (e) {
-      parsed = {};
+      console.warn('⚠️ Gagal parse JSON dari AI:', aiRes.data.choices?.[0]?.message?.content);
+      return res.status(500).json({ error: '❌ Resep tidak valid dari AI' });
     }
 
-    //const kodeInvoice = `INV-${Date.now()}`;
     const { total } = hitungTotalBayar(parsed);
 
-    // Simpan ke Firestore
     resepTerakhir = {
       nama,
       keluhan,
       resep: parsed,
       status: 'proses',
-      //kodeInvoice,
       total,
       pembayaran: 'belum',
       waktu: new Date()
@@ -91,7 +91,7 @@ app.post('/chat', async (req, res) => {
     const docRef = await db.collection('antrian').add(resepTerakhir);
     console.log(`📥 Resep untuk ${nama} disimpan ke Firestore`);
 
-    // Update status jadi 'done' setelah delay
+    // Auto update status → done
     setTimeout(async () => {
       try {
         await docRef.update({ status: 'done' });
@@ -101,17 +101,16 @@ app.post('/chat', async (req, res) => {
       }
     }, Math.random() * 3000 + 5000);
 
-    // Tampilkan total harga bayar manual
     res.json({
       status: '✅ Resep dikirim ke tabib.',
       resep: parsed,
       total,
-      instruksi_bayar: `Silakan transfer sebesar Rp${total} ke rekening yang tertera di tempat, lalu konfirmasi ke petugas.`
+      instruksi_bayar: `Silakan transfer atau bayar sebesar Rp${total.toLocaleString()} ke tempat pembayaran yang tertera.`
     });
 
   } catch (err) {
     console.error('🔥 Gagal proses /chat:', err.response?.data || err.message);
-    res.status(500).json({ error: ⚠️ Gagal memproses permintaan.' });
+    res.status(500).json({ error: '⚠️ Gagal memproses permintaan.' });
   }
 });
 
@@ -121,7 +120,12 @@ app.get('/status', async (req, res) => {
   if (!nama) return res.status(400).json({ error: 'Nama wajib dikirim sebagai query' });
 
   try {
-    const snapshot = await db.collection('antrian').where('nama', '==', nama).orderBy('waktu', 'desc').limit(1).get();
+    const snapshot = await db.collection('antrian')
+      .where('nama', '==', nama)
+      .orderBy('waktu', 'desc')
+      .limit(1)
+      .get();
+
     if (snapshot.empty) return res.status(404).json({ status: '❌ Tidak ditemukan' });
 
     const data = snapshot.docs[0].data();
@@ -134,12 +138,18 @@ app.get('/status', async (req, res) => {
 // === Daftar pasien selesai
 app.get('/daftar-pasien', async (req, res) => {
   try {
-    const snapshot = await db.collection('antrian').where('status', '==', 'done').orderBy('waktu', 'desc').limit(10).get();
+    const snapshot = await db.collection('antrian')
+      .where('status', '==', 'done')
+      .orderBy('waktu', 'desc')
+      .limit(10)
+      .get();
+
     const daftar = snapshot.docs.map(doc => ({
       id: doc.id,
       nama: doc.data().nama,
       waktu: doc.data().waktu.toDate?.().toISOString?.() || ''
     }));
+
     res.json({ daftar });
   } catch (err) {
     res.status(500).json({ error: 'Gagal ambil daftar pasien' });
@@ -155,7 +165,8 @@ app.get('/resep/:id', async (req, res) => {
 
     let resep = doc.data().resep;
     if (typeof resep === 'string') {
-      try { resep = JSON.parse(resep); } catch { return res.status(500).json({ error: 'Resep tidak valid JSON' }); }
+      try { resep = JSON.parse(resep); }
+      catch { return res.status(500).json({ error: 'Resep tidak valid JSON' }); }
     }
 
     res.json(resep);
@@ -172,9 +183,9 @@ app.get('/resep', (req, res) => {
 
 // === Root
 app.get('/', (req, res) => {
-  res.send('🌿 Tabib AI Backend Aktif - Mode Pembayaran Manual');
+  res.send('🌿 Tabib AI Backend Aktif - Mode Manual Bayar');
 });
 
-// === Start Server
+// === Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server Tabib AI running on port ${PORT}`));
