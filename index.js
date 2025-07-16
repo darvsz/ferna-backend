@@ -52,7 +52,7 @@ app.post('/chat', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram sesuiakan untuk dicampur sebagai ramuan 200mililiter air. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
+            content: `Kamu adalah tabib herbal. Jawab dalam JSON valid dengan satuan gram sesuiakan untuk dicampur sebagai ramuan 200mililiter air maksimal total herbal dalam resep adalah 20gram. Gunakan bahan: jahe, kunyit, temulawak, daun mint, daun sirih, kayu manis, cengkeh, sereh, daun kelor, lada hitam.`
           },
           { role: 'user', content: `Nama: ${nama}\nKeluhan: ${keluhan}` }
         ],
@@ -73,7 +73,7 @@ app.post('/chat', async (req, res) => {
       parsed = {};
     }
 
-    const kodeInvoice = `INV-${Date.now()}`;
+    //const kodeInvoice = `INV-${Date.now()}`;
     const { total } = hitungTotalBayar(parsed);
 
     // Simpan ke Firestore
@@ -82,7 +82,7 @@ app.post('/chat', async (req, res) => {
       keluhan,
       resep: parsed,
       status: 'proses',
-      kodeInvoice,
+      //kodeInvoice,
       total,
       pembayaran: 'belum',
       waktu: new Date()
