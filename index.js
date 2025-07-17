@@ -10,7 +10,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// === Init Firebase pakai base64
+// === Init Firebase via Base64 Key
 try {
   const decoded = Buffer.from(process.env.FIREBASE_KEY_BASE64, 'base64').toString('utf8');
   const serviceAccount = JSON.parse(decoded);
@@ -23,7 +23,7 @@ try {
 const db = getFirestore();
 let resepTerakhir = null;
 
-// === Fungsi hitung harga resep + pembulatan
+// === Fungsi Hitung Harga Resep + Pembulatan ke atas ribuan
 function hitungTotalBayar(resep) {
   let totalGram = 0;
   for (let bahan in resep) {
@@ -35,12 +35,12 @@ function hitungTotalBayar(resep) {
   const biayaSistem = 4000;
 
   const totalKasar = biayaAwal + biayaSistem;
-  const total = Math.ceil(totalKasar / 1000) * 1000; // Pembulatan ke atas ribuan
+  const total = Math.ceil(totalKasar / 1000) * 1000;
 
   return { total, rincian: { totalGram, biayaAwal, biayaSistem } };
 }
 
-// === Endpoint /chat → kirim ke AI, hitung, simpan Firestore
+// === /chat → proses resep dan simpan ke Firestore
 app.post('/chat', async (req, res) => {
   const nama = req.body.nama || req.body.name;
   const keluhan = req.body.keluhan || req.body.message;
@@ -77,6 +77,9 @@ app.post('/chat', async (req, res) => {
     }
 
     const { total } = hitungTotalBayar(parsed);
+    const waktu = new Date();
+
+    const idCustom = `${nama.toLowerCase()}-${waktu.toISOString().slice(0, 19).replace(/[:T]/g, '.')}`; // Contoh: budi-2025.07.17.14.32.59
 
     resepTerakhir = {
       nama,
@@ -84,14 +87,15 @@ app.post('/chat', async (req, res) => {
       resep: parsed,
       status: 'proses',
       total,
-      //pembayaran: 'belum',
-      waktu: new Date()
+      waktu
     };
 
-    const docRef = await db.collection('antrian').add(resepTerakhir);
-    console.log(`📥 Resep untuk ${nama} disimpan ke Firestore`);
+    const docRef = db.collection('antrian').doc(idCustom);
+    await docRef.set(resepTerakhir);
 
-    // Auto update status → done
+    console.log(`📥 Resep untuk ${nama} disimpan dengan ID: ${idCustom}`);
+
+    // Update status otomatis ke DONE
     setTimeout(async () => {
       try {
         await docRef.update({ status: 'done' });
@@ -105,7 +109,7 @@ app.post('/chat', async (req, res) => {
       status: '✅ Resep dikirim ke tabib.',
       resep: parsed,
       total,
-      instruksi_bayar: `Silakan transfer atau bayar sebesar Rp${total.toLocaleString()} ke tempat pembayaran yang tertera.`
+      instruksi_bayar: `Silakan bayar Rp${total.toLocaleString()} ke tempat pembayaran.`
     });
 
   } catch (err) {
@@ -156,7 +160,7 @@ app.get('/daftar-pasien', async (req, res) => {
   }
 });
 
-// === Resep berdasarkan ID
+// === Ambil resep via ID
 app.get('/resep/:id', async (req, res) => {
   const id = req.params.id;
   try {
@@ -165,8 +169,7 @@ app.get('/resep/:id', async (req, res) => {
 
     let resep = doc.data().resep;
     if (typeof resep === 'string') {
-      try { resep = JSON.parse(resep); }
-      catch { return res.status(500).json({ error: 'Resep tidak valid JSON' }); }
+      try { resep = JSON.parse(resep); } catch { return res.status(500).json({ error: 'Resep tidak valid JSON' }); }
     }
 
     res.json(resep);
@@ -175,7 +178,7 @@ app.get('/resep/:id', async (req, res) => {
   }
 });
 
-// === Resep terakhir
+// === Resep terakhir (cache sementara)
 app.get('/resep', (req, res) => {
   if (resepTerakhir) res.json(resepTerakhir);
   else res.status(404).json({ message: 'Belum ada resep.' });
@@ -186,6 +189,6 @@ app.get('/', (req, res) => {
   res.send('🌿 Tabib AI Backend Aktif - Mode Manual Bayar');
 });
 
-// === Start server
+// === Jalankan server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server Tabib AI running on port ${PORT}`));
